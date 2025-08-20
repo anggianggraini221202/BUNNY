@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Kiki's Little Adventure — Mobile Storybook</title>
+<style>
+  :root{
+    --bg:#f7f7fb;
+    --ink:#222;
+    --brand:#6ec1ff;
+    --accent:#ffd166;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+  .app{display:flex;flex-direction:column;height:100vh;max-width:900px;margin:0 auto;}
+  header{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;top:0;background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.86));backdrop-filter: blur(8px);border-bottom:1px solid #e9e9ef;}
+  header h1{font-size:16px;margin:0;font-weight:700;}
+  header .by{font-size:12px;opacity:.75;}
+  #viewer{position:relative;flex:1;overflow:hidden;touch-action:pan-y;display:flex;align-items:center;justify-content:center;background:white;}
+  .page{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transition:transform .35s ease, opacity .35s ease;}
+  .page img{width:100%;height:100%;object-fit:contain;}
+  .hidden{opacity:0;pointer-events:none;}
+  .controls{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:10px 12px;border-top:1px solid #e9e9ef;background:#fff;}
+  .btn{border:1px solid #ddd;background:#fff;border-radius:12px;padding:10px 14px;font-weight:600}
+  .btn:active{transform:scale(.98)}
+  .dots{display:flex;gap:4px;align-items:center}
+  .dot{width:6px;height:6px;border-radius:50%;background:#d9d9de;opacity:.8}
+  .dot.active{background:var(--brand);opacity:1}
+  .paintbar{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;background:rgba(255,255,255,.95);border:1px solid #ddd;border-radius:14px;display:flex;gap:6px;align-items:center;padding:6px 8px;box-shadow:0 6px 20px rgba(0,0,0,.12);flex-wrap:wrap;}
+  .color-palette{display:flex;gap:4px;flex-wrap:wrap;}
+  .color-pencil{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;}
+  canvas.coloring{touch-action:none;position:absolute;inset:0;}
+  .stack{position:relative;inset:0;width:100%;height:100%}
+  .tip{font-size:12px;text-align:center;padding:6px 10px;color:#666}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Kiki's Little Adventure</h1>
+      <div class="by">Written & Illustrated by Anggi Anggraini</div>
+    </div>
+    <div class="dots" id="dots"></div>
+  </header>
+
+  <main id="viewer" aria-live="polite"></main>
+
+  <div class="controls">
+    <button class="btn" id="prevBtn">◀︎ Prev</button>
+    <div class="tip">Swipe left / right • Coloring toolbar always visible</div>
+    <button class="btn" id="nextBtn">Next ▶︎</button>
+  </div>
+</div>
+  
+<script>
+const TOTAL_PAGES = 14;
+
+const IMAGES = [
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/1.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/2.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/3.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/4.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/5.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/6.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/7.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/8.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/9.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/10.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/11.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/12.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/13.png",
+  "https://raw.githubusercontent.com/anggianggraini221202/BUNNY/main/14.png"
+];
+
+const coloringPages = [13,14];
+let current = 1;
+const viewer = document.getElementById('viewer');
+const dotsWrap = document.getElementById('dots');
+
+function createDots(){
+  dotsWrap.innerHTML='';
+  for(let i=1;i<=TOTAL_PAGES;i++){
+    const d=document.createElement('div');
+    d.className='dot'+(i===current?' active':''); dotsWrap.appendChild(d);
+  }
+}
+
+function createPage(n){
+  const page = document.createElement('div');
+  page.className = 'page hidden';
+  page.dataset.page = n;
+  const img = document.createElement('img');
+  img.src = IMAGES[n-1];
+  page.appendChild(img);
+
+  if(coloringPages.includes(n)){
+    const stack = document.createElement('div');
+    stack.className='stack';
+    stack.appendChild(img);
+    const canvas = document.createElement('canvas');
+    canvas.className='coloring';
+    stack.appendChild(canvas);
+    page.innerHTML='';
+    page.appendChild(stack);
+
+    const bar = document.createElement('div');
+    bar.className='paintbar';
+
+    // full palette + color picker
+    let paletteHTML = '<div class="color-palette">';
+    const colors = ["#000000","#444444","#888888","#ffffff","#ff0000","#ff7f00","#ffff00","#00ff00","#0000ff","#4b0082","#8f00ff","#00ffff","#ff00ff"];
+    colors.forEach(c=>{
+      paletteHTML += `<div class="color-pencil" style="background:${c}" data-color="${c}"></div>`;
+    });
+    paletteHTML += `<input type="color" id="picker${n}" value="#2b6aff"/>`;
+    paletteHTML += '</div>';
+
+    bar.innerHTML = `
+      ${paletteHTML}
+      <input id="size${n}" type="range" min="2" max="48" value="10"/>
+      <button id="undo${n}" class="btn">Undo</button>
+      <button id="erase${n}" class="btn">Erase</button>
+      <button id="clear${n}" class="btn">Clear</button>
+      <button id="save${n}" class="btn">Save</button>
+    `;
+    page.appendChild(bar);
+
+    img.onload = () => {
+      canvas.width = img.clientWidth;
+      canvas.height = img.clientHeight;
+      setupPainting(n, canvas, bar);
+    };
+  }
+  return page;
+}
+
+function setupPainting(n, canvas, bar){
+  const ctx = canvas.getContext('2d');
+  ctx.lineCap = 'round';
+  let mode='draw';
+  let brushColor = '#2b6aff';
+  const size = document.getElementById('size'+n);
+  const undo = document.getElementById('undo'+n);
+  const erase = document.getElementById('erase'+n);
+  const clear = document.getElementById('clear'+n);
+  const save = document.getElementById('save'+n);
+
+  // palette
+  bar.querySelectorAll('.color-pencil').forEach(p=>{
+    p.addEventListener('click',()=>{ brushColor = p.dataset.color; mode='draw'; });
+  });
+  const picker = document.getElementById('picker'+n);
+  picker.addEventListener('input',()=>{ brushColor = picker.value; mode='draw'; });
+
+  let drawing=false, history=[];
+  function pushHistory(){ try{ history.push(canvas.toDataURL()); if(history.length>25)history.shift(); }catch(e){} }
+  function getPos(e){ const r=canvas.getBoundingClientRect(); const t = (e.touches? e.touches[0]: e); return {x:(t.clientX - r.left), y:(t.clientY - r.top)}; }
+  function start(e){ drawing=true; const p=getPos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.strokeStyle = (mode==='erase') ? 'rgba(0,0,0,1)' : brushColor; ctx.globalCompositeOperation = (mode==='erase') ? 'destination-out' : 'source-over'; ctx.lineWidth = size.value; pushHistory();}
+  function move(e){ if(!drawing) return; const p=getPos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+  function end(){ drawing=false; }
+
+  canvas.addEventListener('pointerdown', start);
+  canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointerleave', end);
+
+  undo.onclick = () => { if(history.length){ const img = new Image(), url = history.pop(); img.onload = ()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0); }; img.src=url; } };
+  erase.onclick = () => { mode = (mode==='erase'?'draw':'erase'); erase.textContent = (mode==='erase'?'Draw':'Erase'); };
+  clear.onclick = () => { ctx.clearRect(0,0,canvas.width,canvas.height); history=[]; };
+
+  save.onclick = () => {
+    const A4W = 2480, A4H = 3508;
+    const out = document.createElement('canvas');
+    out.width = A4W; out.height = A4H;
+    const octx = out.getContext('2d');
+    octx.fillStyle = '#ffffff'; octx.fillRect(0,0,A4W,A4H);
+    const baseImg = canvas.previousSibling;
+    octx.drawImage(baseImg,0,0,A4W,A4H);
+    octx.drawImage(canvas,0,0,A4W,A4H);
+    const link = document.createElement('a');
+    link.download = `kiki-coloring-page-${n}-A4.png`;
+    link.href = out.toDataURL('image/png');
+    link.click();
+  };
+}
+
+function showPage(n){
+  current = Math.max(1, Math.min(TOTAL_PAGES, n));
+  if(!viewer.querySelector('.page[data-page="'+current+'"]')){
+    viewer.appendChild(createPage(current));
+  }
+  viewer.querySelectorAll('.page').forEach(pg => {
+    const num = parseInt(pg.dataset.page,10);
+    if(num===current){ pg.classList.remove('hidden'); pg.style.transform='translateX(0)'; }
+    else if(num<current){ pg.classList.add('hidden'); pg.style.transform='translateX(-30%)'; }
+    else { pg.classList.add('hidden'); pg.style.transform='translateX(30%)'; }
+  });
+  createDots();
+}
+
+document.getElementById('prevBtn').onclick = ()=>showPage(current-1);
+document.getElementById('nextBtn').onclick = ()=>showPage(current+1);
+
+let startX=null;
+viewer.addEventListener('touchstart', (e)=>{ startX = e.touches[0].clientX; }, {passive:true});
+viewer.addEventListener('touchend', (e)=>{ if(startX===null) return; const dx = e.changedTouches[0].clientX - startX; if(Math.abs(dx)>40){ if(dx>0) showPage(current-1); else showPage(current+1);} startX=null; });
+
+showPage(1);
+</script>
+</body>
+</html>
